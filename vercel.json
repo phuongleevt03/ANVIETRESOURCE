@@ -5,7 +5,7 @@
   "buildCommand": "",
   "outputDirectory": "FE",
   "redirects": [
-    { "source": "/", "destination": "/folders.html", "permanent": false }
+    { "source": "/", "destination": "/login.html", "permanent": false }
   ],
   "rewrites": [
     {
