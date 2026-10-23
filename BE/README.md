@@ -151,90 +151,9 @@ secure cookie authentication. Keep secrets and database credentials out of
 frontend files. Review OpenAI's data processing and retention terms before
 sending real identity documents.
 
-## Deploying the full application to Render
+## Deploying
 
-The repository-root `render.yaml` defines a paid Render Web Service with
-2 GB RAM and a PostgreSQL database with 1 GB RAM and 5 GB initial storage, in
-the Singapore region. The service runs from the
-repository root so Flask can serve both `BE/` and `FE/`; it does not package
-the backend as a serverless function. The configured web plan has 2 GB RAM
-for the image-processing dependencies. Confirm current plan pricing
-and resource limits in Render before applying the Blueprint. Increase the web
-plan if Render logs show out-of-memory errors during startup or image
-processing.
-
-Before deploying:
-
-1. Review the files to be pushed and push the intended changes to the `main`
-   branch of `phuongleevt03/ANVIETRESOURCE`. Do not commit `.env`, API keys,
-   database URLs, local databases, or real identity data.
-2. Open Render Dashboard and choose **New > Blueprint**. Connect
-   `phuongleevt03/ANVIETRESOURCE`, select `main`, and review the paid resources
-   and costs shown by Render before applying the Blueprint.
-3. Keep the web service name `anvietresource` so its HTTPS origin matches
-   `ALLOWED_ORIGINS` in `render.yaml`. If that name is unavailable or changed,
-   update `ALLOWED_ORIGINS` in the Render service environment to the exact
-   HTTPS URL Render assigns; do not add a trailing slash.
-4. Enter `OPENAI_API_KEY` in Render when prompted or in the service's
-   **Environment** page. The key is intentionally not stored in this file.
-   Render generates `SECRET_KEY`; the Blueprint connects the service to its
-   PostgreSQL database and runs `flask --app app db upgrade` before starting
-   Gunicorn.
-
-After the first successful deploy, open the web service's Shell and create the
-first administrator:
-
-```bash
-cd BE
-flask --app app create-user
-```
-
-Use the interactive prompt to create an admin password of at least 12
-characters. Open the Render service URL, verify `/api/health`, then test login,
-record creation, OCR, QR/MRZ verification, and portrait cropping with
-non-sensitive test data. Review Render logs and metrics for build, startup, or
-memory errors.
-
-Render PostgreSQL is separate from the local SQLite database. Existing local
-records are not copied automatically. Keep local `BE/.env` and local SQLite
-configuration separate from Render environment variables; local development
-continues to use the setup described above. Verify Render's current storage,
-backup, retention, and pricing terms before using real identity data.
-
-## Tests
-
-From `BE/`:
-
-```powershell
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-The focused document-verification tests also run with
-`.\venv\Scripts\python.exe -m unittest tests.test_document_verification -v`.
-
-## Deploying to Vercel (serverless)
-
-`.vercelignore` at the repository root keeps raw address data, tests, and
-local-only files out of the upload. Serverless disks are wiped after each
-invocation, so SQLite cannot be used: with `APP_ENV=production` the app refuses
-to start unless `DATABASE_URL` points to PostgreSQL. Set these environment
-variables in the Vercel project:
-
-- `APP_ENV=production`
-- `DATABASE_URL` (PostgreSQL connection string)
-- `SECRET_KEY`
-- `ALLOWED_ORIGINS=https://<domain>` (exact origin, no trailing slash)
-- `SESSION_COOKIE_SECURE=true`
-- `OPENAI_API_KEY`
-
-Then run the migrations once against that database from a machine with the
-same `DATABASE_URL`:
-
-```bash
-cd BE
-flask --app app db upgrade
-```
-
-Vercel limits each request body to about 4.5 MB, so the frontend resizes CCCD
-images to at most 1600 px on the long edge and re-encodes them as JPEG (quality
-0.85) before upload.
+Production runs the frontend on Vercel and the backend plus PostgreSQL on
+Render; Vercel forwards `/api/*` to Render so the browser stays on one origin.
+See [docs/deploy-vercel-render.md](../docs/deploy-vercel-render.md) (Vietnamese)
+for the step-by-step guide, environment variables, and troubleshooting.

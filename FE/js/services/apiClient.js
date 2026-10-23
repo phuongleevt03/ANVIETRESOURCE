@@ -16,7 +16,8 @@ function apiBase() {
       : window.location.hostname;
     return `http://${host}:8000`;
   }
-  throw new Error("Chưa cấu hình địa chỉ backend.");
+  // Production: Flask (Render) hoặc Vercel (chuyển tiếp /api sang Render) cùng origin
+  return window.location.origin;
 }
 
 async function request(path, options = {}) {

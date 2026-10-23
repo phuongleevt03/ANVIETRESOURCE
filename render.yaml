@@ -1,3 +1,4 @@
+# Render Blueprint: BE (Flask + PostgreSQL). Hướng dẫn: docs/deploy-vercel-render.md
 services:
   - type: web
     name: anvietresource
@@ -24,8 +25,9 @@ services:
         sync: false
       - key: OPENAI_VISION_MODEL
         value: gpt-6-luna
+      # https://<domain-vercel>,https://anvietresource.onrender.com (không có / cuối)
       - key: ALLOWED_ORIGINS
-        value: https://anvietresource.onrender.com
+        sync: false
       - key: LOCAL_ONLY
         value: "false"
       - key: SESSION_COOKIE_SECURE

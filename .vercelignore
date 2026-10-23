@@ -1,19 +1,10 @@
-# Raw address data (FE/data/*.json is the generated copy the app uses)
-vietnam-administrative-divisions-main/
-
-# Tests and manual test scripts
-BE/tests/
-BE/test_*.py
-
-# Retired service kept only for reference
-BE/services/face_service(del).py
-
-# Local-only files (matter when deploying with the Vercel CLI from this folder)
-BE/venv/
-BE/.venv/
-BE/instance/
-BE/tmp_uploads/
-**/__pycache__/
+# Vercel chỉ phục vụ giao diện (FE/) và chuyển tiếp /api sang Render (xem vercel.json).
+# Dấu "/" ở đầu = chỉ khớp ở gốc repo.
+/BE/
+/docs/
+/vietnam-administrative-divisions-main/
+/ANVIETRESOURCE/
+/render.yaml
+/convert_address_mapping.py
+/README.txt
 .env
-BE/.env
-ANVIETRESOURCE/
