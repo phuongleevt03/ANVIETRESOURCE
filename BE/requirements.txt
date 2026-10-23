@@ -7,6 +7,5 @@ openai>=1.68,<3
 psycopg[binary]>=3.2,<4
 python-dotenv>=1.0,<2
 zxing-cpp>=2.2,<3
-opencv-python==4.13.0.92
+opencv-python-headless==4.13.0.92
 numpy==2.4.4
-ultralytics==8.4.150

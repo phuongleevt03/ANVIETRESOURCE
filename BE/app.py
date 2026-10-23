@@ -55,6 +55,8 @@ app.config.update(
 )
 if app_environment == "production" and not os.getenv("SECRET_KEY"):
     raise RuntimeError("SECRET_KEY phải được cấu hình khi chạy production.")
+if app_environment == "production" and not database_url.startswith("postgresql+psycopg://"):
+    raise RuntimeError("Production yêu cầu DATABASE_URL trỏ tới PostgreSQL (không dùng SQLite).")
 db.init_app(app)
 migrate = Migrate(app, db)
 app.register_blueprint(auth_api)

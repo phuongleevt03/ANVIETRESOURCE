@@ -2,8 +2,9 @@
 
 Flask serves both the frontend and API in local development. The shared
 database defaults to SQLite at `BE/instance/hr_profiles.sqlite3`; production
-can use PostgreSQL. CCCD OCR uses the configured OpenAI vision API; portrait
-processing uses YOLO and OpenCV in the backend.
+production must use PostgreSQL. CCCD OCR uses the configured OpenAI vision API;
+portrait processing uses OpenCV's YuNet face detector
+(`BE/models/face_detection_yunet_2023mar.onnx`) with a Haar Cascade fallback.
 
 ## Local setup
 
@@ -157,7 +158,7 @@ The repository-root `render.yaml` defines a paid Render Web Service with
 the Singapore region. The service runs from the
 repository root so Flask can serve both `BE/` and `FE/`; it does not package
 the backend as a serverless function. The configured web plan has 2 GB RAM
-for the image-processing dependencies and YOLO. Confirm current plan pricing
+for the image-processing dependencies. Confirm current plan pricing
 and resource limits in Render before applying the Blueprint. Increase the web
 plan if Render logs show out-of-memory errors during startup or image
 processing.
@@ -210,3 +211,30 @@ From `BE/`:
 
 The focused document-verification tests also run with
 `.\venv\Scripts\python.exe -m unittest tests.test_document_verification -v`.
+
+## Deploying to Vercel (serverless)
+
+`.vercelignore` at the repository root keeps raw address data, tests, and
+local-only files out of the upload. Serverless disks are wiped after each
+invocation, so SQLite cannot be used: with `APP_ENV=production` the app refuses
+to start unless `DATABASE_URL` points to PostgreSQL. Set these environment
+variables in the Vercel project:
+
+- `APP_ENV=production`
+- `DATABASE_URL` (PostgreSQL connection string)
+- `SECRET_KEY`
+- `ALLOWED_ORIGINS=https://<domain>` (exact origin, no trailing slash)
+- `SESSION_COOKIE_SECURE=true`
+- `OPENAI_API_KEY`
+
+Then run the migrations once against that database from a machine with the
+same `DATABASE_URL`:
+
+```bash
+cd BE
+flask --app app db upgrade
+```
+
+Vercel limits each request body to about 4.5 MB, so the frontend resizes CCCD
+images to at most 1600 px on the long edge and re-encodes them as JPEG (quality
+0.85) before upload.

@@ -3,7 +3,7 @@ import {
   getUploadState,
   setAvatarImage,
   cancelOCRProcessing,
-} from "./components/uploadForm.js?v=20261020-live-camera";
+} from "./components/uploadForm.js?v=20261023-compress-upload";
 import {
   initProfileForm,
   getFormData,

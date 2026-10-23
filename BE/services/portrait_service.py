@@ -1,79 +1,99 @@
+import os
+import threading
+
 import cv2
 import base64
 import numpy as np
-from ultralytics import YOLO
 
 
 # =========================================================
-# YOLO MODEL
+# YUNET FACE DETECTOR (OpenCV DNN, model ~230KB)
 # =========================================================
 
-MODEL_PATH = "yolo11n.pt"
+YUNET_MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "models",
+    "face_detection_yunet_2023mar.onnx"
+)
 
-model = YOLO(MODEL_PATH)
+YUNET_SCORE_THRESHOLD = 0.6
+
+_yunet_detector = None
+_yunet_lock = threading.Lock()
 
 
-# =========================================================
-# HÀM TÌM KHUÔN MẶT / PERSON
-# =========================================================
-
-def detect_person(image):
+def _get_yunet_detector():
     """
-    Dùng YOLO để tìm người trong ảnh.
-
-    Lưu ý:
-    yolo11n mặc định không có class "face".
-    Vì vậy ở giai đoạn này YOLO sẽ tìm class person.
-
-    Sau đó OpenCV sẽ tìm khuôn mặt bên trong vùng person.
+    Nạp YuNet một lần rồi dùng lại.
+    Trả về None nếu thiếu model hoặc OpenCV không hỗ trợ
+    → khi đó dùng Haar Cascade.
     """
 
-    results = model.predict(
-        source=image,
-        conf=0.20,
-        iou=0.45,
-        verbose=False
+    global _yunet_detector
+
+    if _yunet_detector is None:
+
+        if not os.path.isfile(YUNET_MODEL_PATH):
+            return None
+
+        try:
+            _yunet_detector = cv2.FaceDetectorYN.create(
+                YUNET_MODEL_PATH,
+                "",
+                (320, 320),
+                YUNET_SCORE_THRESHOLD,
+                0.3,
+                5000
+            )
+        except (AttributeError, cv2.error):
+            return None
+
+    return _yunet_detector
+
+
+def detect_face_yunet(image):
+    """
+    Tìm khuôn mặt bằng YuNet.
+    Trả về khuôn mặt lớn nhất (ảnh chân dung trên CCCD).
+    """
+
+    img_h, img_w = image.shape[:2]
+
+    # FaceDetectorYN giữ trạng thái input size
+    # → khoá lại khi gunicorn chạy nhiều thread
+    with _yunet_lock:
+
+        detector = _get_yunet_detector()
+
+        if detector is None:
+            return None
+
+        detector.setInputSize((img_w, img_h))
+
+        _, faces = detector.detect(image)
+
+    if faces is None or len(faces) == 0:
+        return None
+
+    best = max(
+        faces,
+        key=lambda item: item[2] * item[3]
     )
 
-    if not results:
+    x1 = max(0, int(best[0]))
+    y1 = max(0, int(best[1]))
+    x2 = min(img_w, int(best[0] + best[2]))
+    y2 = min(img_h, int(best[1] + best[3]))
+
+    if x2 <= x1 or y2 <= y1:
         return None
 
-    result = results[0]
-
-    if result.boxes is None:
-        return None
-
-    best_box = None
-    best_area = 0
-
-    for box in result.boxes:
-        cls_id = int(box.cls[0])
-        confidence = float(box.conf[0])
-
-        # COCO class 0 = person
-        if cls_id != 0:
-            continue
-
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
-
-        x1 = int(x1)
-        y1 = int(y1)
-        x2 = int(x2)
-        y2 = int(y2)
-
-        area = (x2 - x1) * (y2 - y1)
-
-        if confidence >= 0.20 and area > best_area:
-            best_area = area
-            best_box = {
-                "x1": x1,
-                "y1": y1,
-                "x2": x2,
-                "y2": y2,
-                "confidence": confidence
-            }
-
-    return best_box
+    return {
+        "x": x1,
+        "y": y1,
+        "width": x2 - x1,
+        "height": y2 - y1
+    }
 
 
 # =========================================================
@@ -156,14 +176,14 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 2. Resize ảnh để YOLO dễ nhận diện
+    # 2. Đưa ảnh về chiều rộng 1600px để dò mặt
     # -----------------------------------------------------
 
-    detect_image = image.copy()
+    detect_image = image
 
     scale = 1.0
 
-    if original_w < 1600:
+    if original_w != 1600:
 
         scale = 1600 / original_w
 
@@ -173,74 +193,31 @@ def crop_portrait_from_bytes(file_bytes: bytes):
         detect_image = cv2.resize(
             image,
             (new_w, new_h),
-            interpolation=cv2.INTER_CUBIC
+            interpolation=(
+                cv2.INTER_CUBIC if scale > 1
+                else cv2.INTER_AREA
+            )
         )
 
 
     # -----------------------------------------------------
-    # 3. YOLO tìm người
+    # 3. YuNet tìm mặt
     # -----------------------------------------------------
 
-    person = detect_person(
+    detector_name = "YuNet"
+
+    face_info = detect_face_yunet(
         detect_image
     )
 
 
     # -----------------------------------------------------
-    # 4. Nếu YOLO tìm được person
-    #    → tìm mặt bên trong vùng đó
-    # -----------------------------------------------------
-
-    if person is not None:
-
-        px1 = person["x1"]
-        py1 = person["y1"]
-        px2 = person["x2"]
-        py2 = person["y2"]
-
-        person_crop = detect_image[
-            py1:py2,
-            px1:px2
-        ]
-
-        face = detect_face(
-            person_crop
-        )
-
-        if face is not None:
-
-            fx = face["x"]
-            fy = face["y"]
-            fw = face["width"]
-            fh = face["height"]
-
-            # Chuyển tọa độ về ảnh detect_image
-            fx += px1
-            fy += py1
-
-            face_info = {
-                "x": fx,
-                "y": fy,
-                "width": fw,
-                "height": fh
-            }
-
-        else:
-            # Nếu YOLO tìm person nhưng Haar
-            # không tìm được mặt
-            face_info = None
-
-    else:
-
-        face_info = None
-
-
-    # -----------------------------------------------------
-    # 5. Fallback:
-    #    tìm mặt trên toàn bộ ảnh
+    # 4. Fallback: Haar Cascade
     # -----------------------------------------------------
 
     if face_info is None:
+
+        detector_name = "Haar"
 
         face_info = detect_face(
             detect_image
@@ -248,7 +225,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 6. Nếu vẫn không tìm được
+    # 5. Nếu vẫn không tìm được
     # -----------------------------------------------------
 
     if face_info is None:
@@ -259,7 +236,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 7. Đưa tọa độ về ảnh gốc
+    # 6. Đưa tọa độ về ảnh gốc
     # -----------------------------------------------------
 
     x = face_info["x"]
@@ -276,7 +253,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 8. Mở rộng vùng crop
+    # 7. Mở rộng vùng crop
     # -----------------------------------------------------
 
     left_expand = int(w * 1.0)
@@ -307,7 +284,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 9. Crop
+    # 8. Crop
     # -----------------------------------------------------
 
     portrait = image[
@@ -324,7 +301,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 10. Chuẩn hóa tỷ lệ
+    # 9. Chuẩn hóa tỷ lệ
     # -----------------------------------------------------
 
     target_ratio = 0.78
@@ -382,7 +359,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 11. Resize ảnh chân dung
+    # 10. Resize ảnh chân dung
     # -----------------------------------------------------
 
     portrait = cv2.resize(
@@ -393,7 +370,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 12. Encode JPG
+    # 11. Encode JPG
     # -----------------------------------------------------
 
     success, encoded = cv2.imencode(
@@ -413,7 +390,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 13. Base64
+    # 12. Base64
     # -----------------------------------------------------
 
     image_base64 = base64.b64encode(
@@ -428,7 +405,7 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 14. Trả kết quả
+    # 13. Trả kết quả
     # -----------------------------------------------------
 
     return {
@@ -461,5 +438,5 @@ def crop_portrait_from_bytes(file_bytes: bytes):
         },
 
         "detector":
-            "YOLO + Haar fallback"
+            detector_name
     }

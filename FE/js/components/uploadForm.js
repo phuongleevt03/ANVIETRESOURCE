@@ -474,6 +474,75 @@ function readFileAsDataUrl(file) {
 }
 
 // ============================================================
+// NÉN ẢNH TRƯỚC KHI GỬI
+// ============================================================
+//
+// Vercel giới hạn mỗi request khoảng 4.5MB → đưa cạnh dài về
+// tối đa 1600px và nén JPEG 0.85. Nếu không đọc được ảnh thì
+// giữ nguyên file để Backend báo lỗi như cũ.
+// ============================================================
+
+const MAX_IMAGE_EDGE = 1600;
+const JPEG_QUALITY = 0.85;
+
+async function decodeImage(file) {
+  if (window.createImageBitmap) {
+    try {
+      return await createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch {
+      // Thử lại bằng thẻ <img> bên dưới
+    }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function compressImageFile(file) {
+  let image;
+  try {
+    image = await decodeImage(file);
+  } catch {
+    return file;
+  }
+
+  const width = image.width || image.naturalWidth;
+  const height = image.height || image.naturalHeight;
+  const ratio = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+
+  const context = canvas.getContext("2d");
+  // Nền trắng cho ảnh PNG trong suốt
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close?.();
+
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+  );
+  if (!blob) return file;
+
+  // Ảnh JPEG đã nhỏ sẵn thì giữ bản gốc
+  if (ratio === 1 && file.type === "image/jpeg" && blob.size >= file.size) {
+    return file;
+  }
+
+  const baseName = (file.name || "cccd").replace(/\.[^.]+$/, "");
+  return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+}
+
+// ============================================================
 // UPLOAD PORTRAIT
 // ============================================================
 
@@ -676,8 +745,8 @@ async function scanCCCD(requestId) {
 // IMAGE SELECTED
 // ============================================================
 
-async function handleImageSelected(side, file) {
-  if (!file) {
+async function handleImageSelected(side, selectedFile) {
+  if (!selectedFile) {
     return;
   }
   if (side === "back" && !state.portraitDataUrl) {
@@ -688,6 +757,8 @@ async function handleImageSelected(side, file) {
   setOCRStatus("", "idle");
   const selectionRequestId = ++imageSelectionRequestId;
   ocrRequestId++;
+
+  const file = await compressImageFile(selectedFile);
 
   // ==========================================================
   // MẶT TRƯỚC

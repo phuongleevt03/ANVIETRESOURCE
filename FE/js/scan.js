@@ -25,7 +25,7 @@ try {
           "Thư mục đã đạt giới hạn 50 hồ sơ.";
         saveButton.disabled = true;
       }
-      await import("./app.js?v=20261021-address-exact-resolution");
+      await import("./app.js?v=20261023-compress-upload");
     }
   }
 } catch (error) {
