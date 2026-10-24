@@ -1,5 +1,32 @@
 let csrfToken = null;
 let sessionRequest = null;
+const SESSION_WAKE_RETRY_DELAYS = [0, 2000, 4000, 7000, 10000, 12000];
+const SESSION_WAKE_REQUEST_TIMEOUT_MS = 8000;
+
+function showBackendWakeNotice(message) {
+  let notice = document.getElementById("backendWakeNotice");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "backendWakeNotice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.style.cssText =
+      "position:fixed;z-index:10000;top:16px;left:50%;transform:translateX(-50%);" +
+      "width:min(92vw,560px);padding:12px 16px;border-radius:10px;" +
+      "background:#1e293b;color:#fff;box-shadow:0 8px 24px #0003;" +
+      "font:500 14px/1.45 Arial,sans-serif;text-align:center";
+    document.body.append(notice);
+  }
+  notice.textContent = message;
+}
+
+function hideBackendWakeNotice() {
+  document.getElementById("backendWakeNotice")?.remove();
+}
+
+function isTransientSessionError(error) {
+  return [0, 502, 503, 504].includes(error?.status);
+}
 
 function apiBase() {
   const configured = String(window.APP_CONFIG?.apiBase || "").trim();
@@ -23,7 +50,8 @@ function apiBase() {
 async function request(path, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers || {});
-  const requestOptions = { ...options, method, headers, credentials: "include" };
+  const { timeoutMs, ...fetchOptions } = options;
+  const requestOptions = { ...fetchOptions, method, headers, credentials: "include" };
   delete requestOptions.skipCsrf;
   if (options.body !== undefined && !(options.body instanceof FormData) && typeof options.body !== "string") {
     headers.set("Content-Type", "application/json");
@@ -35,13 +63,40 @@ async function request(path, options = {}) {
     headers.set("X-CSRF-Token", csrfToken);
   }
   let response;
+  let timeoutId;
+  if (timeoutMs) {
+    const controller = new AbortController();
+    requestOptions.signal = controller.signal;
+    timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  }
   try {
     response = await fetch(`${apiBase()}${path}`, requestOptions);
   } catch (error) {
-    throw new Error(`Không kết nối được backend tại ${apiBase()}. Kiểm tra máy chủ và mạng.`, { cause: error });
+    const requestError = new Error(
+      `Không kết nối được backend tại ${apiBase()}. Kiểm tra máy chủ và mạng.`,
+      { cause: error },
+    );
+    requestError.status = 0;
+    requestError.code =
+      error?.name === "AbortError" ? "REQUEST_TIMEOUT" : "NETWORK_ERROR";
+    throw requestError;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
   }
   const contentType = response.headers.get("Content-Type") || "";
-  const payload = contentType.includes("application/json") ? await response.json() : null;
+  let payload = null;
+  if (contentType.includes("application/json")) {
+    try {
+      payload = await response.json();
+    } catch (error) {
+      const parseError = new Error("Backend trả về phản hồi không hợp lệ.", {
+        cause: error,
+      });
+      parseError.status = response.status;
+      parseError.code = "INVALID_RESPONSE";
+      throw parseError;
+    }
+  }
   if (response.status === 401) {
     csrfToken = null;
     window.dispatchEvent(new Event("api:unauthorized"));
@@ -65,14 +120,67 @@ window.addEventListener("api:unauthorized", () => {
 
 export async function getSession() {
   if (!sessionRequest) {
-    sessionRequest = request("/api/auth/session")
-      .then((payload) => {
-        csrfToken = payload.authenticated ? payload.csrfToken : null;
-        return payload;
-      })
-      .finally(() => {
-        sessionRequest = null;
-      });
+    sessionRequest = (async () => {
+      const wakeNoticeTimer = window.setTimeout(() => {
+        showBackendWakeNotice(
+          "Đang kết nối và đánh thức máy chủ Render. Lần đầu có thể mất khoảng một phút...",
+        );
+      }, 4000);
+
+      try {
+        for (let attempt = 0; attempt < SESSION_WAKE_RETRY_DELAYS.length; attempt += 1) {
+          const delay = SESSION_WAKE_RETRY_DELAYS[attempt];
+          if (delay) {
+            await new Promise((resolve) => window.setTimeout(resolve, delay));
+          }
+          if (attempt > 0) {
+            showBackendWakeNotice(
+              `Máy chủ đang khởi động; đang tự thử lại (${attempt}/${SESSION_WAKE_RETRY_DELAYS.length - 1})...`,
+            );
+          }
+
+          try {
+            const payload = await request("/api/auth/session", {
+              timeoutMs: SESSION_WAKE_REQUEST_TIMEOUT_MS,
+            });
+            if (!payload || typeof payload.authenticated !== "boolean") {
+              const responseError = new Error(
+                "Backend chưa sẵn sàng trả dữ liệu phiên đăng nhập.",
+              );
+              responseError.status = 502;
+              responseError.code = "INVALID_SESSION_RESPONSE";
+              throw responseError;
+            }
+            csrfToken = payload.authenticated ? payload.csrfToken : null;
+            return payload;
+          } catch (error) {
+            if (
+              !isTransientSessionError(error) ||
+              attempt === SESSION_WAKE_RETRY_DELAYS.length - 1
+            ) {
+              throw error;
+            }
+          }
+        }
+      } catch (error) {
+        if (isTransientSessionError(error)) {
+          const wakeError = new Error(
+            "Máy chủ Render vẫn đang khởi động hoặc tạm thời không phản hồi. " +
+              "Vui lòng đợi một chút rồi tải lại trang.",
+            { cause: error },
+          );
+          wakeError.status = error.status;
+          wakeError.code = error.code;
+          throw wakeError;
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(wakeNoticeTimer);
+        hideBackendWakeNotice();
+      }
+    })().finally(() => {
+      sessionRequest = null;
+    });
   }
   return sessionRequest;
 }

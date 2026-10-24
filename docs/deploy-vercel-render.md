@@ -178,6 +178,10 @@ Máy chủ so trình duyệt gửi kèm header `Origin` với danh sách này, *
 
 ## Giới hạn cần biết
 
+- **Render Free ngủ khi không có truy cập**: request đầu tiên khi mở trang sẽ tự đánh thức máy chủ.
+  Giao diện chờ và tự thử lại kiểm tra phiên khi gặp lỗi mạng hoặc HTTP `502`/`503`/`504`
+  (tối đa khoảng 83 giây), đồng thời hiện thông báo trong lúc chờ. Không cần ping định kỳ;
+  nếu Render chưa sẵn sàng sau thời gian này, hãy đợi thêm rồi tải lại trang.
 - **Ảnh tải lên**: giao diện tự thu nhỏ ảnh CCCD (cạnh dài tối đa 1600px, JPEG chất lượng 0.85)
   trước khi gửi, thường còn vài trăm KB mỗi ảnh. Máy chủ chấp nhận tối đa 10MB mỗi yêu cầu;
   ảnh gửi tới OCR được xử lý riêng, tối đa 1600px cạnh dài và 1,5MB mỗi mặt.
