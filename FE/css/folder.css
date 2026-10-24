@@ -739,9 +739,9 @@ dialog::backdrop {
     display: contents;
   }
   .folders-page > .topbar #migrationLink {
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 2;
-    justify-self: start;
+    justify-self: end;
   }
   .folders-page > .topbar #logoutButton {
     grid-column: 2;
