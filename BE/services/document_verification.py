@@ -211,6 +211,18 @@ def _decode_qr(image_bytes):
     if image is None:
         return ""
 
+    height, width = image.shape[:2]
+    longest_side = max(height, width)
+    if longest_side > 1800:
+        scale = 1800 / longest_side
+        image = cv2.resize(
+            image,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_AREA,
+        )
+
     enlarged = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     contrast = cv2.createCLAHE(
@@ -251,17 +263,6 @@ def _decode_qr(image_bytes):
 
     search_image = image
     height, width = search_image.shape[:2]
-    longest_side = max(height, width)
-    if longest_side > 2000:
-        scale = 2000 / longest_side
-        search_image = cv2.resize(
-            search_image,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_AREA,
-        )
-        height, width = search_image.shape[:2]
 
     window_size = min(height, width, max(96, round(min(height, width) * 0.2)))
     step = max(24, window_size // 3)
@@ -286,7 +287,7 @@ def _decode_qr(image_bytes):
         ),
     )
 
-    for x, y in windows:
+    for x, y in windows[:20]:
         crop = cv2.cvtColor(
             search_image[y : y + window_size, x : x + window_size],
             cv2.COLOR_BGR2GRAY,

@@ -167,6 +167,20 @@ class DocumentVerificationTests(unittest.TestCase):
 
         self.assertEqual(_decode_qr(image_bytes.tobytes()), payload)
 
+    @patch("services.document_verification.zxingcpp.read_barcodes", return_value=[])
+    def test_qr_decoder_bounds_image_size_and_crop_attempts(self, read_barcodes):
+        image = np.full((2400, 3200, 3), 255, dtype=np.uint8)
+        encoded, image_bytes = cv2.imencode(".jpg", image)
+        self.assertTrue(encoded)
+
+        self.assertEqual(_decode_qr(image_bytes.tobytes()), "")
+
+        self.assertLessEqual(len(read_barcodes.call_args_list), 26)
+        original_size = max(read_barcodes.call_args_list[0].args[0].shape[:2])
+        enlarged_size = max(read_barcodes.call_args_list[1].args[0].shape[:2])
+        self.assertLessEqual(original_size, 1800)
+        self.assertLessEqual(enlarged_size, 3600)
+
     @patch("services.document_verification.zxingcpp.read_barcodes")
     def test_qr_decoder_tries_original_then_two_times_upscaled_image(self, read_barcodes):
         read_barcodes.side_effect = [
