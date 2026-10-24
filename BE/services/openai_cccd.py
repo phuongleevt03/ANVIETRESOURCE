@@ -5,6 +5,9 @@ import logging
 from typing import Any
 
 from dotenv import load_dotenv
+import groq
+from groq import Groq
+import openai
 from openai import OpenAI
 
 from services.image_preprocessing import enhance_document_image
@@ -22,28 +25,70 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("OPENAI_VISION_MODEL", "gpt-6-luna")
-OPENAI_TIMEOUT_SECONDS = 90
-_client = None
+GROQ_MODEL_NAME = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
+OCR_PROVIDER_TIMEOUT_SECONDS = 45
+_clients = {}
 
 
-class OpenAIConfigurationError(RuntimeError):
+class OCRConfigurationError(RuntimeError):
     pass
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
+class OCRProviderError(RuntimeError):
+    def __init__(self, failures: list[tuple[str, str]]):
+        self.failures = tuple(failures)
+        providers = ", ".join(provider for provider, _ in failures)
+        super().__init__(f"Tất cả dịch vụ OCR đều lỗi: {providers}.")
+
+
+def _provider_order() -> list[str]:
+    configured = os.getenv("OCR_PROVIDERS", "openai,groq")
+    providers = list(dict.fromkeys(
+        name.strip().lower()
+        for name in configured.split(",")
+        if name.strip()
+    ))
+    unsupported = [provider for provider in providers if provider not in {"openai", "groq"}]
+    if unsupported:
+        raise OCRConfigurationError(
+            "OCR_PROVIDERS chỉ hỗ trợ openai và groq."
+        )
+
+    return [
+        provider
+        for provider in providers
+        if os.getenv(
+            "OPENAI_API_KEY" if provider == "openai" else "GROQ_API_KEY",
+            "",
+        ).strip()
+    ]
+
+
+def configured_ocr_providers() -> list[str]:
+    return _provider_order()
+
+
+def _get_client(provider: str = "openai"):
+    if provider not in {"openai", "groq"}:
+        raise ValueError(f"Nhà cung cấp OCR không hợp lệ: {provider}")
+
+    if provider not in _clients:
+        api_key = os.getenv(
+            "OPENAI_API_KEY" if provider == "openai" else "GROQ_API_KEY",
+            "",
+        ).strip()
         if not api_key:
-            raise OpenAIConfigurationError(
-                "Thiếu OPENAI_API_KEY. Hãy cấu hình trong BE/.env và khởi động lại backend."
+            raise OCRConfigurationError(
+                "Cần cấu hình OPENAI_API_KEY hoặc GROQ_API_KEY cho OCR."
             )
-        _client = OpenAI(
+
+        client_class = OpenAI if provider == "openai" else Groq
+        _clients[provider] = client_class(
             api_key=api_key,
-            timeout=OPENAI_TIMEOUT_SECONDS,
+            timeout=OCR_PROVIDER_TIMEOUT_SECONDS,
             max_retries=0,
         )
-    return _client
+    return _clients[provider]
 
 
 # ============================================================
@@ -384,18 +429,102 @@ def _normalize_result(data: dict) -> dict:
 
 
 # ============================================================
-# OPENAI VISION OCR
+# VISION OCR PROVIDERS
 # ============================================================
+
+def _messages_for_provider(provider: str, front_image: str, back_image: str) -> list:
+    def image_part(url: str) -> dict:
+        image_url = {"url": url}
+        if provider == "openai":
+            image_url["detail"] = "high"
+        return {"type": "image_url", "image_url": image_url}
+
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Bạn là hệ thống OCR tài liệu CCCD Việt Nam. "
+                "Đọc chính xác chữ nhìn thấy trong ảnh. "
+                "Phân biệt mặt trước và mặt sau. "
+                "Không suy đoán hoặc tự điền thông tin còn thiếu. "
+                "Chỉ trả về JSON đúng schema được cung cấp."
+            ),
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        OCR_PROMPT
+                        + "\n\nẢNH 1 là mặt trước CCCD đã được cân bằng tương phản "
+                        "và làm nét nhẹ. Hãy trích xuất các trường nhìn thấy trên mặt trước, "
+                        "bao gồm số giấy tờ, họ tên, ngày sinh, giới tính, quốc tịch, "
+                        "quê quán và nơi cư trú nếu những trường đó xuất hiện. "
+                        "Chỉ ghi nội dung nhìn thấy; không suy đoán chi tiết bị mờ."
+                    ),
+                },
+                image_part(front_image),
+                {
+                    "type": "text",
+                    "text": (
+                        "ẢNH 2 là mặt sau CCCD đã được cân bằng tương phản "
+                        "và làm nét nhẹ. Kiểm tra xem mặt sau có thông tin cần "
+                        "trích xuất hay không. Chỉ sử dụng nội dung thực sự nhìn "
+                        "thấy; không suy đoán chi tiết bị mờ hoặc lấy nội dung "
+                        "của trường này thay cho trường khác."
+                    ),
+                },
+                image_part(back_image),
+            ],
+        },
+    ]
+
+
+def _parse_provider_response(response) -> dict:
+    choices = getattr(response, "choices", None)
+    if not choices:
+        raise ValueError("Nhà cung cấp OCR trả về kết quả rỗng.")
+
+    content = getattr(
+        getattr(choices[0], "message", None),
+        "content",
+        None,
+    )
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Nhà cung cấp OCR trả về nội dung rỗng.")
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Nhà cung cấp OCR trả về JSON không hợp lệ.") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("Kết quả OCR không phải JSON object.")
+    return _normalize_result(data)
+
+
+def _model_for_provider(provider: str) -> str:
+    if provider == "openai":
+        return os.getenv("OPENAI_VISION_MODEL", MODEL_NAME)
+    return os.getenv("GROQ_VISION_MODEL", GROQ_MODEL_NAME)
+
 
 def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
     """
-    Nhận bytes ảnh CCCD hai mặt, gọi OpenAI Vision và trả dict
+    Nhận bytes ảnh CCCD hai mặt, thử lần lượt các dịch vụ Vision đã cấu hình và trả dict
     tương thích với API Flask /api/ocr-cccd.
     """
     if not front_bytes:
         raise ValueError("Chưa có ảnh mặt trước CCCD.")
     if not back_bytes:
         raise ValueError("Chưa có ảnh mặt sau CCCD.")
+
+    providers = _provider_order()
+    if not providers:
+        raise OCRConfigurationError(
+            "Cần cấu hình OPENAI_API_KEY hoặc GROQ_API_KEY cho OCR."
+        )
 
     front_image = image_to_data_url(
         enhance_document_image(front_bytes),
@@ -406,94 +535,44 @@ def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
         "image/jpeg",
     )
 
-    try:
-        response = _get_client().chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Bạn là hệ thống OCR tài liệu CCCD Việt Nam. "
-                        "Đọc chính xác chữ nhìn thấy trong ảnh. "
-                        "Phân biệt mặt trước và mặt sau. "
-                        "Không suy đoán hoặc tự điền thông tin còn thiếu. "
-                        "Chỉ trả về JSON đúng schema được cung cấp."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                OCR_PROMPT
-                                + "\n\nẢNH 1 là mặt trước CCCD đã được cân bằng tương phản "
-                                "và làm nét nhẹ. Hãy trích xuất các trường nhìn thấy trên mặt trước, "
-                                "bao gồm số giấy tờ, họ tên, ngày sinh, "
-                                "giới tính, quốc tịch, quê quán và nơi cư trú "
-                                "nếu những trường đó xuất hiện. Chỉ ghi nội dung nhìn thấy; "
-                                "không suy đoán chi tiết bị mờ."
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": front_image,
-                                "detail": "high",
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "ẢNH 2 là mặt sau CCCD đã được cân bằng tương phản "
-                                "và làm nét nhẹ. Kiểm tra xem mặt sau có thông tin cần "
-                                "trích xuất hay không. Chỉ sử dụng nội dung thực sự "
-                                "nhìn thấy; không suy đoán chi tiết bị mờ hoặc lấy nội "
-                                "dung của trường này thay cho trường khác."
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": back_image,
-                                "detail": "high",
-                            },
-                        },
-                    ],
-                },
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "cccd",
-                    "strict": True,
-                    "schema": CCCD_SCHEMA,
-                },
-            },
-        )
-
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("OpenAI trả về nội dung OCR rỗng.")
-
+    failures = []
+    for provider in providers:
+        sdk_error = openai.APIError if provider == "openai" else groq.APIError
         try:
-            data = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ValueError("OpenAI trả về JSON không hợp lệ.") from exc
-
-        if not isinstance(data, dict):
-            raise ValueError("Kết quả OCR không phải JSON object.")
-
-        result = _normalize_result(data)
+            response = _get_client(provider).chat.completions.create(
+                model=_model_for_provider(provider),
+                messages=_messages_for_provider(
+                    provider,
+                    front_image,
+                    back_image,
+                ),
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "cccd",
+                        "strict": True,
+                        "schema": CCCD_SCHEMA,
+                    },
+                },
+            )
+            result = _parse_provider_response(response)
+        except (sdk_error, ValueError) as error:
+            failures.append((provider, type(error).__name__))
+            logger.warning(
+                "OCR provider %s failed (%s); continuing to next configured provider.",
+                provider,
+                type(error).__name__,
+            )
+            continue
 
         logger.info(
-            "OCR hoàn tất; có số giấy tờ: %s; có địa chỉ gốc: %s",
+            "OCR completed with provider %s model %s; has document number: %s; "
+            "has household address: %s",
+            provider,
+            _model_for_provider(provider),
             bool(result["soGiayTo"]),
             bool(result["HKTT"]["diaChiGoc"]),
         )
-        # Không ghi log ảnh hoặc toàn bộ thông tin cá nhân.
         return result
 
-    except Exception:
-        logger.exception("Lỗi khi OCR CCCD bằng OpenAI.")
-        raise
+    raise OCRProviderError(failures)

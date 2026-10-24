@@ -19,7 +19,7 @@ let state = {
 
   portraitDataUrl: null,
 
-  // Kết quả OCR từ OpenAI
+  // Kết quả OCR từ dịch vụ Vision
   ocrData: null,
 };
 
@@ -645,7 +645,7 @@ async function scanCCCD(requestId) {
 
     console.log("ĐÃ CÓ ĐỦ 2 MẶT CCCD");
 
-    console.log("Bắt đầu OCR bằng OpenAI...");
+    console.log("Bắt đầu OCR CCCD...");
 
     console.log("========================================");
 

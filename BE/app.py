@@ -21,17 +21,15 @@ from services.document_verification import verify_cccd_result
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # ============================================================
-# OPENAI OCR
+# OCR PROVIDERS
 # ============================================================
 
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
+from services.openai_cccd import (
+    OCRConfigurationError,
+    OCRProviderError,
+    configured_ocr_providers,
+    extract_cccd,
 )
-from services.openai_cccd import OpenAIConfigurationError, extract_cccd
 from auth_api import auth_api, authenticated, create_account
 from database import db
 from migration_api import migration_api
@@ -224,7 +222,8 @@ def health():
     return jsonify({
         "success": True,
         "status": "ok",
-        "service": "portrait-extraction + openai-ocr"
+        "service": "portrait-extraction + vision-ocr",
+        "ocrProviders": configured_ocr_providers(),
     })
 
 
@@ -490,61 +489,22 @@ def ocr_cccd():
 
     
 
-    except OpenAIConfigurationError as error:
+    except OCRConfigurationError as error:
         return jsonify({
             "success": False,
-            "code": "OPENAI_NOT_CONFIGURED",
+            "code": "OCR_NOT_CONFIGURED",
             "message": str(error)
         }), 503
 
-    except RateLimitError as error:
-        body = getattr(error, "body", None)
-        details = body.get("error", {}) if isinstance(body, dict) else {}
-        code = getattr(error, "code", None)
-        if not code and isinstance(details, dict):
-            code = details.get("code")
-        if code == "insufficient_quota":
-            return jsonify({
-                "success": False,
-                "code": "OPENAI_QUOTA_EXCEEDED",
-                "message": "Dự án OpenAI đã hết hạn mức hoặc chưa bật billing."
-            }), 402
+    except OCRProviderError as error:
+        logger.error(
+            "All configured OCR providers failed: %s",
+            ", ".join(f"{name} ({reason})" for name, reason in error.failures),
+        )
         return jsonify({
             "success": False,
-            "code": "OPENAI_RATE_LIMIT",
-            "message": "OpenAI đang giới hạn yêu cầu. Vui lòng thử lại sau."
-        }), 429
-
-    except AuthenticationError:
-        logger.error("OpenAI rejected the configured credentials.")
-        return jsonify({
-            "success": False,
-            "code": "OPENAI_AUTH_FAILED",
-            "message": "OpenAI từ chối API key. Kiểm tra OPENAI_API_KEY trong BE/.env rồi khởi động lại backend."
-        }), 503
-
-    except APITimeoutError:
-        logger.warning("OpenAI OCR request timed out.")
-        return jsonify({
-            "success": False,
-            "code": "OPENAI_TIMEOUT",
-            "message": "OpenAI xử lý yêu cầu OCR quá lâu. Vui lòng thử lại với ảnh rõ hơn hoặc ít dung lượng hơn."
-        }), 504
-
-    except APIConnectionError:
-        logger.warning("OpenAI service could not be reached.")
-        return jsonify({
-            "success": False,
-            "code": "OPENAI_UNAVAILABLE",
-            "message": "Không thể kết nối OpenAI. Kiểm tra mạng rồi thử lại."
-        }), 503
-
-    except APIStatusError as error:
-        logger.error("OpenAI returned API status %s.", error.status_code)
-        return jsonify({
-            "success": False,
-            "code": "OPENAI_REQUEST_FAILED",
-            "message": "OpenAI không thể hoàn tất yêu cầu OCR."
+            "code": "OCR_PROVIDERS_FAILED",
+            "message": "Các dịch vụ OCR hiện không thể xử lý yêu cầu. Vui lòng thử lại sau."
         }), 502
 
     except Exception as error:

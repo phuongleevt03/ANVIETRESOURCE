@@ -29,6 +29,12 @@ services:
         sync: false
       - key: OPENAI_VISION_MODEL
         value: gpt-6-luna
+      - key: OCR_PROVIDERS
+        value: openai,groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_VISION_MODEL
+        value: qwen/qwen3.8-27b
       # https://<domain-vercel>,https://anvietresource.onrender.com (không có / cuối)
       - key: ALLOWED_ORIGINS
         sync: false

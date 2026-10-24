@@ -2,7 +2,9 @@
 
 Flask serves both the frontend and API in local development. The shared
 database defaults to SQLite at `BE/instance/hr_profiles.sqlite3`; production
-production must use PostgreSQL. CCCD OCR uses the configured OpenAI vision API;
+must use PostgreSQL. CCCD OCR tries the configured providers in `OCR_PROVIDERS`
+order (OpenAI, then optional Groq by default). When Groq is configured, photos
+may be sent there if an earlier provider fails;
 portrait processing uses OpenCV's YuNet face detector
 (`BE/models/face_detection_yunet_2023mar.onnx`) with a Haar Cascade fallback.
 
@@ -18,9 +20,11 @@ pip install -r requirements.txt
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-Keep the existing `.env`; do not overwrite it with the example. Configure a
-valid `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, and a long random `SECRET_KEY`
-in the private `.env`. API keys must remain backend-only.
+Keep the existing `.env`; do not overwrite it with the example. Configure at
+least one provider key (`OPENAI_API_KEY` or `GROQ_API_KEY`) and a long random
+`SECRET_KEY` in the private `.env`. If both keys are configured, the CCCD
+images are sent to Groq only when an earlier provider fails. API keys must
+remain backend-only.
 
 Initialize an empty database and create the first admin account:
 
@@ -148,8 +152,8 @@ development server in production. Set `APP_ENV=production`, a strong
 `LOCAL_ONLY=false`, and `SESSION_COOKIE_SECURE=true`. Configure frontend and
 API on the same site (for example, `app.example.com` and `api.example.com`) for
 secure cookie authentication. Keep secrets and database credentials out of
-frontend files. Review OpenAI's data processing and retention terms before
-sending real identity documents.
+frontend files. Review the data processing and retention terms for each
+configured OCR provider before sending real identity documents.
 
 ## Deploying
 

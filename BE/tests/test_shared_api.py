@@ -41,6 +41,22 @@ class SharedRecordsApiTests(unittest.TestCase):
         response = client.get("/api/folders")
         self.assertEqual(response.status_code, 401)
 
+    def test_health_reports_configured_ocr_provider_order_without_keys(self):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "openai-test-key",
+                "GROQ_API_KEY": "groq-test-key",
+                "OCR_PROVIDERS": "groq,openai,groq",
+            },
+        ):
+            response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["ocrProviders"], ["groq", "openai"])
+        self.assertNotIn("openai-test-key", response.get_data(as_text=True))
+        self.assertNotIn("groq-test-key", response.get_data(as_text=True))
+
     def test_root_redirects_to_folders_as_default_landing_page(self):
         response = self.client.get("/", follow_redirects=False)
         self.assertEqual(response.status_code, 302)
@@ -127,6 +143,27 @@ class SharedRecordsApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.json["code"], "OCR_PROCESSING_FAILED")
+
+    def test_ocr_endpoint_reports_all_provider_failures(self):
+        provider_error = app_module.OCRProviderError(
+            [
+                ("openai", "APIConnectionError"),
+                ("groq", "RateLimitError"),
+            ]
+        )
+        with patch.object(app_module, "extract_cccd", side_effect=provider_error):
+            response = self.client.post(
+                "/api/ocr-cccd",
+                data={
+                    "front": (BytesIO(b"original-front-image"), "front.jpg"),
+                    "back": (BytesIO(b"original-back-image"), "back.jpg"),
+                },
+                headers=self.csrf,
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json["code"], "OCR_PROVIDERS_FAILED")
 
     def test_two_users_share_folder_and_profile_and_stale_edit_is_rejected(self):
         folder_response = self.client.post(
