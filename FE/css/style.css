@@ -555,19 +555,19 @@ body {
 }
 
 .avatar-circle img {
-  width: 100%;
+  width: 88%;
 
-  height: 100%;
+  height: 88%;
 
-  object-fit: cover;
+  object-fit: contain;
 }
 
 #avatarImg {
-  width: 100%;
+  width: 88%;
 
-  height: 100%;
+  height: 88%;
 
-  object-fit: cover;
+  object-fit: contain;
 
   object-position: center center;
 
