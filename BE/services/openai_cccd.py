@@ -21,7 +21,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini")
+MODEL_NAME = os.getenv("OPENAI_VISION_MODEL", "gpt-6-luna")
 _client = None
 
 
