@@ -339,8 +339,8 @@ try {
       window.location.replace("./folders.html");
     } else {
       const folder = await getFolder(folderId);
-      folderTitle.textContent = `Quét CCCD - ${folder.name}`;
-      document.title = `Quét CCCD - ${folder.name}`;
+      folderTitle.textContent = folder.name;
+      document.title = folder.name;
       document.getElementById("scanCreateBtn").href =
         `./index.html?folderId=${encodeURIComponent(folderId)}`;
       document.getElementById("scanCreateBtn").hidden =
