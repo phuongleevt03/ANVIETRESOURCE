@@ -3,6 +3,18 @@ import { getSession, login } from "./services/apiClient.js";
 const form = document.getElementById("loginForm");
 const errorElement = document.getElementById("loginError");
 const submitButton = document.getElementById("loginButton");
+const passwordInput = document.getElementById("password");
+const togglePasswordButton = document.getElementById("togglePassword");
+
+togglePasswordButton.addEventListener("click", () => {
+  const shouldShowPassword = passwordInput.type === "password";
+  passwordInput.type = shouldShowPassword ? "text" : "password";
+  togglePasswordButton.setAttribute("aria-pressed", String(shouldShowPassword));
+  togglePasswordButton.setAttribute(
+    "aria-label",
+    shouldShowPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu",
+  );
+});
 
 function getSafeNextUrl() {
   const candidate = new URLSearchParams(window.location.search).get("next") || "./folders.html";

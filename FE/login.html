@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#eef2ff" />
     <title>Đăng nhập — Quản lý hồ sơ nhân sự</title>
-    <link rel="stylesheet" href="css/folder.css?v=20261021-responsive" />
+    <link rel="stylesheet" href="css/folder.css?v=20261025-password-visibility" />
     <script src="config.js"></script>
   </head>
   <body class="login-body">
@@ -38,13 +38,45 @@
             </div>
             <div class="login-field">
               <label for="password">Mật khẩu</label>
-              <input
-                id="password"
-                type="password"
-                placeholder="Nhập mật khẩu"
-                autocomplete="current-password"
-                required
-              />
+              <div class="password-input-wrap">
+                <input
+                  id="password"
+                  type="password"
+                  placeholder="Nhập mật khẩu"
+                  autocomplete="current-password"
+                  required
+                />
+                <button
+                  id="togglePassword"
+                  class="password-visibility-toggle"
+                  type="button"
+                  aria-label="Hiện mật khẩu"
+                  aria-pressed="false"
+                  aria-controls="password"
+                >
+                  <svg
+                    class="password-eye-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M2.5 12s3.3-6 9.5-6 9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="2.8"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
             <p
               id="loginError"
@@ -153,6 +185,6 @@
         apiBase: "http://192.168.1.103:8000",
       };
     </script> -->
-    <script type="module" src="js/login.js?v=20261021-default-folders"></script>
+    <script type="module" src="js/login.js?v=20261025-password-visibility"></script>
   </body>
 </html>
