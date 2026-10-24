@@ -175,11 +175,15 @@ class DocumentVerificationTests(unittest.TestCase):
 
         self.assertEqual(_decode_qr(image_bytes.tobytes()), "")
 
-        self.assertLessEqual(len(read_barcodes.call_args_list), 26)
+        self.assertLessEqual(len(read_barcodes.call_args_list), 8)
         original_size = max(read_barcodes.call_args_list[0].args[0].shape[:2])
-        enlarged_size = max(read_barcodes.call_args_list[1].args[0].shape[:2])
-        self.assertLessEqual(original_size, 1800)
-        self.assertLessEqual(enlarged_size, 3600)
+        self.assertLessEqual(original_size, 1400)
+        for call in read_barcodes.call_args_list:
+            self.assertEqual(
+                call.kwargs["formats"],
+                zxingcpp.BarcodeFormat.QRCode,
+            )
+            self.assertFalse(call.kwargs["try_downscale"])
 
     @patch("services.document_verification.zxingcpp.read_barcodes")
     def test_qr_decoder_tries_original_then_two_times_upscaled_image(self, read_barcodes):

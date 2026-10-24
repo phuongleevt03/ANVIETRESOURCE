@@ -213,8 +213,8 @@ def _decode_qr(image_bytes):
 
     height, width = image.shape[:2]
     longest_side = max(height, width)
-    if longest_side > 1800:
-        scale = 1800 / longest_side
+    if longest_side > 1400:
+        scale = 1400 / longest_side
         image = cv2.resize(
             image,
             None,
@@ -224,7 +224,11 @@ def _decode_qr(image_bytes):
         )
 
     def read_candidate(candidate):
-        for barcode in zxingcpp.read_barcodes(candidate):
+        for barcode in zxingcpp.read_barcodes(
+            candidate,
+            formats=zxingcpp.BarcodeFormat.QRCode,
+            try_downscale=False,
+        ):
             if barcode.format == zxingcpp.BarcodeFormat.QRCode and barcode.text:
                 return barcode.text.strip()
         return ""
@@ -233,11 +237,12 @@ def _decode_qr(image_bytes):
     if raw_value:
         return raw_value
 
-    enlarged = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    raw_value = read_candidate(enlarged)
-    del enlarged
-    if raw_value:
-        return raw_value
+    if longest_side <= 900:
+        enlarged = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        raw_value = read_candidate(enlarged)
+        del enlarged
+        if raw_value:
+            return raw_value
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     contrast = cv2.createCLAHE(
@@ -246,18 +251,6 @@ def _decode_qr(image_bytes):
     ).apply(gray)
     del gray
     raw_value = read_candidate(contrast)
-    if raw_value:
-        return raw_value
-
-    enlarged_contrast = cv2.resize(
-        contrast,
-        None,
-        fx=2,
-        fy=2,
-        interpolation=cv2.INTER_CUBIC,
-    )
-    raw_value = read_candidate(enlarged_contrast)
-    del enlarged_contrast
     if raw_value:
         return raw_value
 
@@ -315,7 +308,7 @@ def _decode_qr(image_bytes):
         ),
     )
 
-    for x, y in windows[:20]:
+    for x, y in windows[:4]:
         crop = cv2.cvtColor(
             search_image[y : y + window_size, x : x + window_size],
             cv2.COLOR_BGR2GRAY,
@@ -323,8 +316,8 @@ def _decode_qr(image_bytes):
         enlarged_crop = cv2.resize(
             crop,
             None,
-            fx=4,
-            fy=4,
+            fx=3,
+            fy=3,
             interpolation=cv2.INTER_CUBIC,
         )
         block_size = min(31, min(enlarged_crop.shape[:2]))
@@ -340,9 +333,9 @@ def _decode_qr(image_bytes):
             block_size,
             5,
         )
-        for barcode in zxingcpp.read_barcodes(thresholded_crop):
-            if barcode.format == zxingcpp.BarcodeFormat.QRCode and barcode.text:
-                return barcode.text.strip()
+        raw_value = read_candidate(thresholded_crop)
+        if raw_value:
+            return raw_value
     return ""
 
 
