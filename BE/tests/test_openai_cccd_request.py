@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +10,20 @@ from services import openai_cccd
 
 
 class OpenAICccdRequestTests(unittest.TestCase):
+    def test_client_disables_retries_and_uses_timeout_below_worker_limit(self):
+        with (
+            patch.object(openai_cccd, "_client", None),
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
+            patch.object(openai_cccd, "OpenAI") as openai_constructor,
+        ):
+            openai_cccd._get_client()
+
+        openai_constructor.assert_called_once_with(
+            api_key="test-key",
+            timeout=90,
+            max_retries=0,
+        )
+
     def test_ocr_uses_model_default_temperature(self):
         client = Mock()
         client.chat.completions.create.return_value = SimpleNamespace(

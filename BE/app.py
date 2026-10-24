@@ -23,7 +23,13 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 # OPENAI OCR
 # ============================================================
 
-from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 from services.openai_cccd import OpenAIConfigurationError, extract_cccd
 from auth_api import auth_api, authenticated, create_account
 from database import db
@@ -513,6 +519,14 @@ def ocr_cccd():
             "code": "OPENAI_AUTH_FAILED",
             "message": "OpenAI từ chối API key. Kiểm tra OPENAI_API_KEY trong BE/.env rồi khởi động lại backend."
         }), 503
+
+    except APITimeoutError:
+        logger.warning("OpenAI OCR request timed out.")
+        return jsonify({
+            "success": False,
+            "code": "OPENAI_TIMEOUT",
+            "message": "OpenAI xử lý yêu cầu OCR quá lâu. Vui lòng thử lại với ảnh rõ hơn hoặc ít dung lượng hơn."
+        }), 504
 
     except APIConnectionError:
         logger.warning("OpenAI service could not be reached.")

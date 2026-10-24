@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = os.getenv("OPENAI_VISION_MODEL", "gpt-6-luna")
+OPENAI_TIMEOUT_SECONDS = 90
 _client = None
 
 
@@ -37,7 +38,11 @@ def _get_client():
             raise OpenAIConfigurationError(
                 "Thiếu OPENAI_API_KEY. Hãy cấu hình trong BE/.env và khởi động lại backend."
             )
-        _client = OpenAI(api_key=api_key)
+        _client = OpenAI(
+            api_key=api_key,
+            timeout=OPENAI_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
     return _client
 
 
