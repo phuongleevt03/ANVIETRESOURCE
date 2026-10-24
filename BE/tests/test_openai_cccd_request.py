@@ -50,12 +50,19 @@ class OpenAICccdRequestTests(unittest.TestCase):
             for part in request["messages"][1]["content"]
             if part["type"] == "image_url"
         ]
-        self.assertEqual(len(image_parts), 4)
+        self.assertEqual(len(image_parts), 2)
+        self.assertEqual(
+            [part["image_url"]["url"] for part in image_parts],
+            [
+                openai_cccd.image_to_data_url(b"enhanced-image", "image/jpeg"),
+                openai_cccd.image_to_data_url(b"enhanced-image", "image/jpeg"),
+            ],
+        )
         self.assertTrue(
             all(part["image_url"]["detail"] == "high" for part in image_parts)
         )
         self.assertIn(
-            "ảnh gốc và bản tăng độ rõ",
+            "cân bằng tương phản",
             request["messages"][1]["content"][0]["text"],
         )
         prompt = request["messages"][1]["content"][0]["text"]

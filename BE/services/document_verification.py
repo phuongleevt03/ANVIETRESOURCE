@@ -223,12 +223,32 @@ def _decode_qr(image_bytes):
             interpolation=cv2.INTER_AREA,
         )
 
+    def read_candidate(candidate):
+        for barcode in zxingcpp.read_barcodes(candidate):
+            if barcode.format == zxingcpp.BarcodeFormat.QRCode and barcode.text:
+                return barcode.text.strip()
+        return ""
+
+    raw_value = read_candidate(image)
+    if raw_value:
+        return raw_value
+
     enlarged = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    raw_value = read_candidate(enlarged)
+    del enlarged
+    if raw_value:
+        return raw_value
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     contrast = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8),
     ).apply(gray)
+    del gray
+    raw_value = read_candidate(contrast)
+    if raw_value:
+        return raw_value
+
     enlarged_contrast = cv2.resize(
         contrast,
         None,
@@ -236,31 +256,39 @@ def _decode_qr(image_bytes):
         fy=2,
         interpolation=cv2.INTER_CUBIC,
     )
+    raw_value = read_candidate(enlarged_contrast)
+    del enlarged_contrast
+    if raw_value:
+        return raw_value
+
     blurred = cv2.GaussianBlur(contrast, (0, 0), 1.0)
     sharpened = cv2.addWeighted(contrast, 1.5, blurred, -0.5, 0)
-    candidates = [image, enlarged, contrast, enlarged_contrast, sharpened]
+    del blurred
+    raw_value = read_candidate(sharpened)
+    del sharpened
+    if raw_value:
+        return raw_value
 
-    if min(gray.shape[:2]) >= 3:
-        block_size = min(31, min(gray.shape[:2]))
+    if min(contrast.shape[:2]) >= 3:
+        height, width = contrast.shape[:2]
+        block_size = min(31, min(height, width))
         if block_size % 2 == 0:
             block_size -= 1
         if block_size >= 3:
-            candidates.append(
-                cv2.adaptiveThreshold(
-                    contrast,
-                    255,
-                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                    cv2.THRESH_BINARY,
-                    block_size,
-                    5,
-                )
+            thresholded = cv2.adaptiveThreshold(
+                contrast,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                block_size,
+                5,
             )
+            raw_value = read_candidate(thresholded)
+            del thresholded
+            if raw_value:
+                return raw_value
 
-    for candidate in candidates:
-        for barcode in zxingcpp.read_barcodes(candidate):
-            if barcode.format == zxingcpp.BarcodeFormat.QRCode and barcode.text:
-                return barcode.text.strip()
-
+    del contrast
     search_image = image
     height, width = search_image.shape[:2]
 

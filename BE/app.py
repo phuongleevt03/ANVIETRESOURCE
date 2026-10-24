@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import cv2
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, redirect, send_from_directory
 from flask_cors import CORS
@@ -35,6 +36,8 @@ from auth_api import auth_api, authenticated, create_account
 from database import db
 from migration_api import migration_api
 from records_api import records_api
+
+cv2.setNumThreads(1)
 
 
 # ============================================================
@@ -102,7 +105,7 @@ logger = logging.getLogger(__name__)
 # CONFIG
 # ============================================================
 
-MAX_CONTENT_LENGTH = 30 * 1024 * 1024
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024
 
 app.config[
     "MAX_CONTENT_LENGTH"
@@ -563,7 +566,7 @@ def file_too_large(_error):
     return jsonify({
         "success": False,
         "code": "FILE_TOO_LARGE",
-        "message": "Dữ liệu gửi lên vượt giới hạn 30 MB."
+        "message": "Dữ liệu gửi lên vượt giới hạn 10 MB."
     }), 413
 
 

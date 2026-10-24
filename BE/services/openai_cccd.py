@@ -397,12 +397,14 @@ def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
     if not back_bytes:
         raise ValueError("Chưa có ảnh mặt sau CCCD.")
 
-    enhanced_front_bytes = enhance_document_image(front_bytes)
-    enhanced_back_bytes = enhance_document_image(back_bytes)
-    front_image = image_to_data_url(front_bytes)
-    enhanced_front_image = image_to_data_url(enhanced_front_bytes, "image/jpeg")
-    back_image = image_to_data_url(back_bytes)
-    enhanced_back_image = image_to_data_url(enhanced_back_bytes, "image/jpeg")
+    front_image = image_to_data_url(
+        enhance_document_image(front_bytes),
+        "image/jpeg",
+    )
+    back_image = image_to_data_url(
+        enhance_document_image(back_bytes),
+        "image/jpeg",
+    )
 
     try:
         response = _get_client().chat.completions.create(
@@ -425,10 +427,8 @@ def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
                             "type": "text",
                             "text": (
                                 OCR_PROMPT
-                                + "\n\nẢNH 1 và ẢNH 2 lần lượt là ảnh gốc và bản tăng độ rõ "
-                                "của cùng một mặt trước CCCD. Đây là hai phiên bản của một "
-                                "thẻ, không phải hai giấy tờ khác nhau. Hãy đối chiếu và "
-                                "dùng phiên bản đọc rõ hơn để trích xuất các trường trên mặt trước, "
+                                + "\n\nẢNH 1 là mặt trước CCCD đã được cân bằng tương phản "
+                                "và làm nét nhẹ. Hãy trích xuất các trường nhìn thấy trên mặt trước, "
                                 "bao gồm số giấy tờ, họ tên, ngày sinh, "
                                 "giới tính, quốc tịch, quê quán và nơi cư trú "
                                 "nếu những trường đó xuất hiện. Chỉ ghi nội dung nhìn thấy; "
@@ -443,19 +443,11 @@ def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
                             },
                         },
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": enhanced_front_image,
-                                "detail": "high",
-                            },
-                        },
-                        {
                             "type": "text",
                             "text": (
-                                "ẢNH 3 và ẢNH 4 lần lượt là ảnh gốc và bản tăng độ rõ "
-                                "của cùng một mặt sau CCCD. Đối chiếu hai phiên bản như "
-                                "một mặt thẻ duy nhất. Kiểm tra xem mặt sau có thông tin "
-                                "cần trích xuất hay không. Chỉ sử dụng nội dung thực sự "
+                                "ẢNH 2 là mặt sau CCCD đã được cân bằng tương phản "
+                                "và làm nét nhẹ. Kiểm tra xem mặt sau có thông tin cần "
+                                "trích xuất hay không. Chỉ sử dụng nội dung thực sự "
                                 "nhìn thấy; không suy đoán chi tiết bị mờ hoặc lấy nội "
                                 "dung của trường này thay cho trường khác."
                             ),
@@ -464,13 +456,6 @@ def extract_cccd(front_bytes: bytes, back_bytes: bytes) -> dict:
                             "type": "image_url",
                             "image_url": {
                                 "url": back_image,
-                                "detail": "high",
-                            },
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": enhanced_back_image,
                                 "detail": "high",
                             },
                         },

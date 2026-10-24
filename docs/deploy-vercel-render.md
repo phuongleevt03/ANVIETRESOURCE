@@ -170,7 +170,8 @@ Máy chủ so trình duyệt gửi kèm header `Origin` với danh sách này, *
 ## Giới hạn cần biết
 
 - **Ảnh tải lên**: giao diện tự thu nhỏ ảnh CCCD (cạnh dài tối đa 1600px, JPEG chất lượng 0.85)
-  trước khi gửi, thường còn vài trăm KB mỗi ảnh. Máy chủ chấp nhận tối đa 30MB mỗi yêu cầu.
+  trước khi gửi, thường còn vài trăm KB mỗi ảnh. Máy chủ chấp nhận tối đa 10MB mỗi yêu cầu;
+  ảnh gửi tới OCR được xử lý riêng, tối đa 1600px cạnh dài và 1,5MB mỗi mặt.
 - **120 giây**: Vercel chỉ chờ máy chủ Render trả lời tối đa 120 giây cho mỗi yêu cầu chuyển tiếp,
   quá thì trả `502`. gunicorn cũng đặt `--timeout 120`. Quét CCCD bằng OpenAI thường dưới con số này.
 - **Không cache API**: máy chủ trả `Cache-Control: no-store` cho mọi `/api/*`, nên Vercel không
@@ -195,7 +196,7 @@ Máy chủ so trình duyệt gửi kèm header `Origin` với danh sách này, *
 | `503 OPENAI_NOT_CONFIGURED` / `OPENAI_AUTH_FAILED` | Thiếu key, key sai hoặc đã thu hồi | Kiểm tra `OPENAI_API_KEY` |
 | `402 OPENAI_QUOTA_EXCEEDED` | Tài khoản OpenAI hết tiền | Nạp thêm tại Billing |
 | `429 OPENAI_RATE_LIMIT` | Gửi quá nhiều yêu cầu | Chờ rồi thử lại |
-| `413 FILE_TOO_LARGE` | Yêu cầu vượt 30MB | Kiểm tra giao diện đã là bản mới (có thu nhỏ ảnh), xoá cache trình duyệt |
+| `413 FILE_TOO_LARGE` | Yêu cầu vượt 10MB | Kiểm tra giao diện đã là bản mới (có thu nhỏ ảnh), xoá cache trình duyệt |
 | `502` khi quét CCCD qua Vercel | Máy chủ Render trả lời quá 120 giây hoặc đang khởi động lại | Xem Logs Render, thử lại |
 | `/api/health` trên Vercel ra `404` | `vercel.json` sai địa chỉ Render hoặc Vercel chưa deploy bản có `vercel.json` | Sửa `destination` (Bước 4), Redeploy |
 | Nhập bản sao lưu (Migration) lớn qua Vercel bị lỗi | Tệp sao lưu kèm nhiều ảnh, yêu cầu quá lớn để chuyển tiếp | Mở giao diện trực tiếp trên `https://anvietresource.onrender.com` để nhập |
