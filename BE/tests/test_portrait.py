@@ -46,7 +46,7 @@ class YuNetModelTest(unittest.TestCase):
 
         self.assertEqual(face[:4].tolist(), [120.0, 180.0, 90.0, 100.0])
 
-    def test_falls_back_to_largest_face_when_portrait_region_is_empty(self):
+    def test_rejects_faces_outside_card_portrait_region(self):
         faces = np.array(
             [
                 [650, 120, 80, 90],
@@ -57,7 +57,7 @@ class YuNetModelTest(unittest.TestCase):
 
         face = portrait_service._select_card_portrait_face(faces, 1000, 630)
 
-        self.assertEqual(face[:4].tolist(), [720.0, 260.0, 140.0, 150.0])
+        self.assertIsNone(face)
 
 
 class CropPortraitTest(unittest.TestCase):
@@ -70,8 +70,19 @@ class CropPortraitTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             portrait_service.crop_portrait_from_bytes(_jpeg_bytes(_blank_card()))
 
+    def test_rejects_detected_face_outside_portrait_region(self):
+        box = {"x": 1050, "y": 250, "width": 180, "height": 180}
+        with (
+            mock.patch.object(portrait_service, "detect_face_yunet", return_value=box),
+            mock.patch.object(portrait_service, "detect_face", return_value=box),
+        ):
+            with self.assertRaisesRegex(ValueError, "vùng ảnh mặt trước"):
+                portrait_service.crop_portrait_from_bytes(
+                    _jpeg_bytes(_blank_card(width=1600))
+                )
+
     def test_response_format_with_yunet(self):
-        # Ảnh rộng 1000px được đưa lên 1600px để dò → tọa độ phải quy về ảnh gốc
+        # Detection is resized to a bounded long edge; return coordinates in source pixels.
         box = {"x": 320, "y": 400, "width": 240, "height": 240}
         with mock.patch.object(portrait_service, "detect_face_yunet", return_value=box):
             result = portrait_service.crop_portrait_from_bytes(_jpeg_bytes(_blank_card()))
@@ -83,7 +94,7 @@ class CropPortraitTest(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["image_base64"].startswith("data:image/jpeg;base64,"))
         self.assertEqual((result["width"], result["height"]), (600, 770))
-        self.assertEqual(result["face"], {"x": 200, "y": 250, "width": 150, "height": 150})
+        self.assertEqual(result["face"], {"x": 250, "y": 312, "width": 187, "height": 187})
         self.assertEqual(set(result["crop"]), {"x1", "y1", "x2", "y2"})
         self.assertEqual(result["detector"], "YuNet")
 

@@ -20,20 +20,26 @@ YUNET_SCORE_THRESHOLD = 0.6
 
 _yunet_detector = None
 _yunet_lock = threading.Lock()
+_crop_lock = threading.Lock()
+DETECT_LONG_SIDE = 1280
+FALLBACK_LONG_SIDE = 960
 
 
 def _select_card_portrait_face(faces, image_width, image_height):
     if len(faces) == 0:
         return None
 
-    left_portrait_faces = [
+    portrait_faces = [
         face
         for face in faces
-        if face[0] + face[2] / 2 <= image_width * 0.55
-        and image_height * 0.1 <= face[1] + face[3] / 2 <= image_height * 0.9
+        if face[0] + face[2] / 2 <= image_width * 0.5
+        and image_height * 0.08
+        <= face[1] + face[3] / 2
+        <= image_height * 0.92
     ]
-    candidates = left_portrait_faces or list(faces)
-    return max(candidates, key=lambda face: face[2] * face[3])
+    if not portrait_faces:
+        return None
+    return max(portrait_faces, key=lambda face: face[2] * face[3])
 
 
 def _get_yunet_detector():
@@ -90,6 +96,8 @@ def detect_face_yunet(image):
         return None
 
     best = _select_card_portrait_face(faces, img_w, img_h)
+    if best is None:
+        return None
 
     x1 = max(0, int(best[0]))
     y1 = max(0, int(best[1]))
@@ -115,10 +123,15 @@ FACE_CASCADE_PATH = (
     cv2.data.haarcascades
     + "haarcascade_frontalface_default.xml"
 )
+EYE_CASCADE_PATH = (
+    cv2.data.haarcascades
+    + "haarcascade_eye_tree_eyeglasses.xml"
+)
 
 face_cascade = cv2.CascadeClassifier(
     FACE_CASCADE_PATH
 )
+eye_cascade = cv2.CascadeClassifier(EYE_CASCADE_PATH)
 
 
 def detect_face(image):
@@ -141,15 +154,37 @@ def detect_face(image):
     if len(faces) == 0:
         return None
 
-    best = _select_card_portrait_face(faces, image.shape[1], image.shape[0])
-    x, y, w, h = best
+    candidates = sorted(
+        (tuple(int(value) for value in face) for face in faces),
+        key=lambda face: face[2] * face[3],
+        reverse=True,
+    )
+    for x, y, width, height in candidates:
+        if _select_card_portrait_face(
+            [(x, y, width, height)],
+            image.shape[1],
+            image.shape[0],
+        ) is None:
+            continue
 
-    return {
-        "x": int(x),
-        "y": int(y),
-        "width": int(w),
-        "height": int(h)
-    }
+        upper_face = gray[y : y + height, x : x + width]
+        upper_face = upper_face[: int(height * 0.65)]
+        minimum_eye_size = max(8, width // 10)
+        eyes = eye_cascade.detectMultiScale(
+            upper_face,
+            scaleFactor=1.1,
+            minNeighbors=3,
+            minSize=(minimum_eye_size, minimum_eye_size),
+        )
+        if len(eyes):
+            return {
+                "x": x,
+                "y": y,
+                "width": width,
+                "height": height,
+            }
+
+    return None
 
 
 # =========================================================
@@ -157,7 +192,10 @@ def detect_face(image):
 # =========================================================
 
 def crop_portrait_from_bytes(file_bytes: bytes):
+    with _crop_lock:
+        return _crop_portrait(file_bytes)
 
+def _crop_portrait(file_bytes: bytes):
     # -----------------------------------------------------
     # 1. Đọc ảnh
     # -----------------------------------------------------
@@ -181,17 +219,16 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
 
     # -----------------------------------------------------
-    # 2. Đưa ảnh về chiều rộng 1600px để dò mặt
+    # 2. Chuẩn hóa cạnh dài để giới hạn bộ nhớ khi dò mặt.
     # -----------------------------------------------------
 
     detect_image = image
 
     scale = 1.0
 
-    if original_w != 1600:
+    scale = min(2.0, DETECT_LONG_SIDE / max(original_w, original_h))
 
-        scale = 1600 / original_w
-
+    if scale != 1.0:
         new_w = int(original_w * scale)
         new_h = int(original_h * scale)
 
@@ -224,9 +261,43 @@ def crop_portrait_from_bytes(file_bytes: bytes):
 
         detector_name = "Haar"
 
-        face_info = detect_face(
-            detect_image
+        fallback_scale = min(
+            1.0,
+            FALLBACK_LONG_SIDE / max(detect_image.shape[:2]),
         )
+        fallback_image = (
+            detect_image
+            if fallback_scale == 1.0
+            else cv2.resize(
+                detect_image,
+                None,
+                fx=fallback_scale,
+                fy=fallback_scale,
+                interpolation=cv2.INTER_AREA,
+            )
+        )
+        face_info = detect_face(
+            fallback_image
+        )
+        if face_info is not None and fallback_scale != 1.0:
+            face_info = {
+                key: int(value / fallback_scale)
+                for key, value in face_info.items()
+            }
+
+    if face_info is not None and _select_card_portrait_face(
+        [
+            (
+                face_info["x"],
+                face_info["y"],
+                face_info["width"],
+                face_info["height"],
+            )
+        ],
+        detect_image.shape[1],
+        detect_image.shape[0],
+    ) is None:
+        face_info = None
 
 
     # -----------------------------------------------------
@@ -236,7 +307,8 @@ def crop_portrait_from_bytes(file_bytes: bytes):
     if face_info is None:
 
         raise ValueError(
-            "Không tìm thấy khuôn mặt trên ảnh CCCD"
+            "Không tìm thấy ảnh chân dung ở vùng ảnh mặt trước CCCD. "
+            "Hãy kiểm tra đúng mặt trước, ảnh rõ nét và không bị lóa."
         )
 
 
@@ -261,11 +333,11 @@ def crop_portrait_from_bytes(file_bytes: bytes):
     # 7. Mở rộng vùng crop
     # -----------------------------------------------------
 
-    left_expand = int(w * 1.0)
-    right_expand = int(w * 1.0)
+    left_expand = int(w * 0.38)
+    right_expand = int(w * 0.38)
 
-    top_expand = int(h * 1.2)
-    bottom_expand = int(h * 1.5)
+    top_expand = int(h * 0.6)
+    bottom_expand = int(h * 0.75)
 
     x1 = max(
         0,
