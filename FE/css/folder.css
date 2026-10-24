@@ -722,6 +722,32 @@ dialog::backdrop {
     overflow-wrap: anywhere;
     text-align: center;
   }
+  .folders-page > .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 8px;
+  }
+  .folders-page > .topbar h1 {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    text-align: left;
+  }
+  .folders-page > .topbar .top-actions {
+    display: contents;
+  }
+  .folders-page > .topbar #migrationLink {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .folders-page > .topbar #logoutButton {
+    grid-column: 2;
+    grid-row: 1;
+    flex: none;
+  }
   .btn {
     min-height: 44px;
   }
