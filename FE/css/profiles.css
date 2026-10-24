@@ -65,14 +65,20 @@ tbody tr:last-child td { border-bottom:0; }
 .row-actions .btn { padding:7px 10px; }
 .empty-state { padding:32px 16px; margin-top:16px; text-align:center; color:#64748b; background:#fff; border-radius:10px; }
 @media(max-width:650px) {
-  .topbar,.topbar-title,.page-heading { align-items:stretch; flex-direction:column; }
-  .topbar { padding:14px 4vw; }
+  .topbar {
+    flex-wrap:wrap;
+    padding:14px 4vw;
+  }
+  .topbar-title { display:contents; }
+  .topbar-title > .btn { order:1; }
+  .topbar > #logoutButton { order:2; margin-left:auto; }
+  .topbar-title h1 { order:3; flex-basis:100%; }
   .container { width:92vw; margin:22px auto; }
-  .page-heading { gap:12px; margin-bottom:18px; }
+  .page-heading { align-items:stretch; flex-direction:column; gap:12px; margin-bottom:18px; }
+  .page-heading > .btn { text-align:center; }
   .list-actions { align-items:stretch; flex-wrap:wrap; gap:8px; }
   .list-actions .btn { flex:1 1 calc(50% - 8px); text-align:center; }
   #selectedCount { width:100%; margin-left:0; }
-  .topbar > .btn { align-self:flex-start; }
   input[type="search"] { min-height:44px; font-size:16px; }
   .empty-state { padding:24px 14px; }
 }
