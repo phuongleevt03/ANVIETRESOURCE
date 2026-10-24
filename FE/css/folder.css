@@ -682,8 +682,10 @@ dialog::backdrop {
     padding: 14px 4vw;
   }
   .topbar h1 {
+    width: 100%;
     font-size: 18px;
     overflow-wrap: anywhere;
+    text-align: center;
   }
   .btn {
     min-height: 44px;
@@ -707,6 +709,10 @@ dialog::backdrop {
   .folder-card,
   .login-card {
     padding: 18px;
+  }
+  .folder-card .btn {
+    align-self: flex-end;
+    margin-right: 0;
   }
   .container.login-card {
     padding: 20px;
