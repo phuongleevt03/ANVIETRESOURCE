@@ -22,6 +22,20 @@ _yunet_detector = None
 _yunet_lock = threading.Lock()
 
 
+def _select_card_portrait_face(faces, image_width, image_height):
+    if len(faces) == 0:
+        return None
+
+    left_portrait_faces = [
+        face
+        for face in faces
+        if face[0] + face[2] / 2 <= image_width * 0.55
+        and image_height * 0.1 <= face[1] + face[3] / 2 <= image_height * 0.9
+    ]
+    candidates = left_portrait_faces or list(faces)
+    return max(candidates, key=lambda face: face[2] * face[3])
+
+
 def _get_yunet_detector():
     """
     Nạp YuNet một lần rồi dùng lại.
@@ -75,10 +89,7 @@ def detect_face_yunet(image):
     if faces is None or len(faces) == 0:
         return None
 
-    best = max(
-        faces,
-        key=lambda item: item[2] * item[3]
-    )
+    best = _select_card_portrait_face(faces, img_w, img_h)
 
     x1 = max(0, int(best[0]))
     y1 = max(0, int(best[1]))
@@ -130,14 +141,8 @@ def detect_face(image):
     if len(faces) == 0:
         return None
 
-    # Chọn khuôn mặt lớn nhất
-    faces = sorted(
-        faces,
-        key=lambda item: item[2] * item[3],
-        reverse=True
-    )
-
-    x, y, w, h = faces[0]
+    best = _select_card_portrait_face(faces, image.shape[1], image.shape[0])
+    x, y, w, h = best
 
     return {
         "x": int(x),

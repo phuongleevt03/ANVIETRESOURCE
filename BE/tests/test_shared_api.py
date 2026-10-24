@@ -109,6 +109,25 @@ class SharedRecordsApiTests(unittest.TestCase):
             ocr_data, b"original-front-image", b"original-back-image"
         )
 
+    def test_ocr_endpoint_returns_specific_code_for_unexpected_processing_error(self):
+        with patch.object(
+            app_module,
+            "extract_cccd",
+            side_effect=RuntimeError("upstream processing failure"),
+        ):
+            response = self.client.post(
+                "/api/ocr-cccd",
+                data={
+                    "front": (BytesIO(b"original-front-image"), "front.jpg"),
+                    "back": (BytesIO(b"original-back-image"), "back.jpg"),
+                },
+                headers=self.csrf,
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json["code"], "OCR_PROCESSING_FAILED")
+
     def test_two_users_share_folder_and_profile_and_stale_edit_is_rejected(self):
         folder_response = self.client.post(
             "/api/folders", json={"name": "Nhân sự"}, headers=self.csrf

@@ -339,7 +339,7 @@ def portrait():
         }), 422
 
     except Exception as error:
-        logger.error("Portrait processing failed (%s).", type(error).__name__)
+        logger.exception("Portrait processing failed (%s).", type(error).__name__)
 
         return jsonify({
             "success": False,
@@ -548,10 +548,11 @@ def ocr_cccd():
         }), 502
 
     except Exception as error:
-        logger.error("OCR processing failed (%s).", type(error).__name__)
+        logger.exception("OCR processing failed (%s).", type(error).__name__)
 
         return jsonify({
             "success": False,
+            "code": "OCR_PROCESSING_FAILED",
             "message": "Có lỗi xảy ra khi đọc thông tin CCCD"
         }), 500
 

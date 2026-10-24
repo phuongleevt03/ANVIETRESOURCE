@@ -33,6 +33,32 @@ class YuNetModelTest(unittest.TestCase):
     def test_no_face_on_blank_card(self):
         self.assertIsNone(portrait_service.detect_face_yunet(_blank_card()))
 
+    def test_prefers_face_in_card_portrait_region_over_larger_background_face(self):
+        faces = np.array(
+            [
+                [120, 180, 90, 100],
+                [640, 140, 250, 260],
+            ],
+            dtype=np.float32,
+        )
+
+        face = portrait_service._select_card_portrait_face(faces, 1000, 630)
+
+        self.assertEqual(face[:4].tolist(), [120.0, 180.0, 90.0, 100.0])
+
+    def test_falls_back_to_largest_face_when_portrait_region_is_empty(self):
+        faces = np.array(
+            [
+                [650, 120, 80, 90],
+                [720, 260, 140, 150],
+            ],
+            dtype=np.float32,
+        )
+
+        face = portrait_service._select_card_portrait_face(faces, 1000, 630)
+
+        self.assertEqual(face[:4].tolist(), [720.0, 260.0, 140.0, 150.0])
+
 
 class CropPortraitTest(unittest.TestCase):
 
